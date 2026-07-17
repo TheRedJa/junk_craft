@@ -1,0 +1,9 @@
+{
+  "parent": "minecraft:block/orientable_with_bottom",
+  "textures": {
+    "top": "junkcraft:block/coal_generator_top",
+    "bottom": "junkcraft:block/coal_generator_top",
+    "side": "junkcraft:block/coal_generator_side",
+    "front": "junkcraft:block/coal_generator_front"
+  }
+}
