@@ -1,0 +1,13 @@
+{
+  "itemGroup.junkcraft": "Junk Craft Tab",
+  "block.junkcraft.example_block": "Example Block",
+  "item.junkcraft.example_item": "Example Item",
+
+  "junkcraft.configuration.title": "Junk Craft Configs",
+  "junkcraft.configuration.section.junkcraft.common.toml": "Junk Craft Configs",
+  "junkcraft.configuration.section.junkcraft.common.toml.title": "Junk Craft Configs",
+  "junkcraft.configuration.items": "Item List",
+  "junkcraft.configuration.logDirtBlock": "Log Dirt Block",
+  "junkcraft.configuration.magicNumberIntroduction": "Magic Number Text",
+  "junkcraft.configuration.magicNumber": "Magic Number"
+}
