@@ -26,7 +26,7 @@ public class CoalGeneratorMenu extends AbstractContainerMenu {
 
     // Client-side constructor, invoked via ModMenuTypes' IContainerFactory
     public CoalGeneratorMenu(int containerId, Inventory playerInventory, BlockPos pos) {
-        this(containerId, playerInventory, pos, new ItemStackHandler(1), new SimpleContainerData(4));
+        this(containerId, playerInventory, pos, new ItemStackHandler(1), new SimpleContainerData(5));
     }
 
     // Server-side constructor, invoked from CoalGeneratorBlockEntity#createMenu
@@ -64,6 +64,10 @@ public class CoalGeneratorMenu extends AbstractContainerMenu {
 
     public int getLitDuration() {
         return data.get(3);
+    }
+
+    public int getGenerationRate() {
+        return data.get(4);
     }
 
     @Override

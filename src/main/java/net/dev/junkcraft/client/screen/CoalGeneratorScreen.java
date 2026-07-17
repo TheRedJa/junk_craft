@@ -48,6 +48,16 @@ public class CoalGeneratorScreen extends AbstractContainerScreen<CoalGeneratorMe
     protected void renderLabels(GuiGraphics guiGraphics, int mouseX, int mouseY) {
         guiGraphics.drawString(this.font, this.title, this.titleLabelX, this.titleLabelY, 4210752, false);
         guiGraphics.drawString(this.font, this.playerInventoryTitle, this.inventoryLabelX, this.inventoryLabelY, 4210752, false);
+
+        int litTime = this.menu.getLitTime();
+        String fuelText = litTime > 0 ? "Fuel: " + ((litTime + 19) / 20) + "s" : "Fuel: -";
+        guiGraphics.drawString(this.font, fuelText, 10, 20, 4210752, false);
+
+        String energyText = "Energy: " + this.menu.getEnergyStored() + " / " + this.menu.getMaxEnergyStored() + " RF";
+        guiGraphics.drawString(this.font, energyText, 10, 31, 4210752, false);
+
+        String genText = "Gen: " + this.menu.getGenerationRate() + " RF/t";
+        guiGraphics.drawString(this.font, genText, 10, 42, 4210752, false);
     }
 
     @Override
