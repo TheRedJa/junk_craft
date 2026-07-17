@@ -13,6 +13,7 @@ import com.mojang.logging.LogUtils;
 import net.dev.junkcraft.block.CoalGeneratorBlock;
 import net.dev.junkcraft.block.entity.ModBlockEntities;
 import net.dev.junkcraft.item.CoalGeneratorUpgradeItem;
+import net.dev.junkcraft.item.FunPipeItem;
 import net.dev.junkcraft.item.KakaItem;
 import net.dev.junkcraft.item.MagicNukkelFlascheItem;
 import net.dev.junkcraft.menu.ModMenuTypes;
@@ -93,6 +94,15 @@ public class JunkCraft {
     public static final DeferredItem<Item> COAL_GENERATOR_UPGRADE = ITEMS.register("coal_generator_upgrade",
             () -> new CoalGeneratorUpgradeItem(new Item.Properties()));
 
+    // Fun Pipe - held like a flute, smoke particles, makes you "high"
+    public static final DeferredItem<Item> FUN_PIPE = ITEMS.register("fun_pipe",
+            () -> new FunPipeItem(new Item.Properties().stacksTo(1)
+                    .food(new FoodProperties.Builder()
+                            .alwaysEdible()
+                            .nutrition(0)
+                            .saturationModifier(0f)
+                            .build())));
+
     // Magic Nukkel Flasche - gives nausea and flight when consumed
     public static final DeferredItem<Item> MAGIC_NUKKEL_FLASCHE = ITEMS.register("magic_nukkel_flasche",
             () -> new MagicNukkelFlascheItem(new Item.Properties()
@@ -112,6 +122,7 @@ public class JunkCraft {
             .icon(() -> EXAMPLE_ITEM.get().getDefaultInstance())
             .displayItems((parameters, output) -> {
                 output.accept(EXAMPLE_ITEM.get()); // Add the example item to the tab. For your own tabs, this method is preferred over the event
+                output.accept(FUN_PIPE.get());
                 output.accept(MAGIC_NUKKEL_FLASCHE.get());
                 output.accept(COAL_GENERATOR_UPGRADE.get());
                 output.accept(COAL_GENERATOR_ITEM.get());
