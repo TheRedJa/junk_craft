@@ -2,6 +2,8 @@
   "itemGroup.junkcraft": "Junk Craft Tab",
   "block.junkcraft.example_block": "Example Block",
   "item.junkcraft.example_item": "Example Item",
+  "block.junkcraft.coal_generator": "Coal Generator",
+  "item.junkcraft.coal_generator_upgrade": "Coal Generator Upgrade",
 
   "junkcraft.configuration.title": "Junk Craft Configs",
   "junkcraft.configuration.section.junkcraft.common.toml": "Junk Craft Configs",
