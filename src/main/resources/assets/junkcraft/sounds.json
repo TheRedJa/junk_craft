@@ -1,0 +1,29 @@
+{
+  "perfect_fart": {
+    "category": "player",
+    "sounds": [
+      "junkcraft:perfect_fart"
+    ]
+  },
+  "romance": {
+    "category": "neutral",
+    "sounds": [
+      "junkcraft:romance"
+    ]
+  },
+  "villager_breed_fail": {
+    "category": "neutral",
+    "sounds": [
+      "junkcraft:villager_breed_fail"
+    ]
+  },
+  "intro": {
+    "category": "music",
+    "sounds": [
+      {
+        "name": "junkcraft:intro",
+        "stream": true
+      }
+    ]
+  }
+}

@@ -1,5 +1,11 @@
 package net.dev.junkcraft;
 
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
+import java.util.stream.Collectors;
+
 import org.slf4j.Logger;
 
 import com.mojang.logging.LogUtils;
@@ -7,16 +13,25 @@ import com.mojang.logging.LogUtils;
 import net.dev.junkcraft.block.CoalGeneratorBlock;
 import net.dev.junkcraft.block.entity.ModBlockEntities;
 import net.dev.junkcraft.item.CoalGeneratorUpgradeItem;
+import net.dev.junkcraft.item.KakaItem;
 import net.dev.junkcraft.item.MagicNukkelFlascheItem;
 import net.dev.junkcraft.menu.ModMenuTypes;
+import net.dev.junkcraft.sound.ModSounds;
+import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.network.chat.Component;
+import net.minecraft.sounds.SoundSource;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.Mob;
+import net.minecraft.world.entity.ai.memory.MemoryModuleType;
+import net.minecraft.world.entity.npc.Villager;
 import net.minecraft.world.food.FoodProperties;
 import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.CreativeModeTab;
 import net.minecraft.world.item.CreativeModeTabs;
 import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.SoundType;
@@ -32,7 +47,9 @@ import net.neoforged.neoforge.capabilities.Capabilities;
 import net.neoforged.neoforge.capabilities.RegisterCapabilitiesEvent;
 import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.event.BuildCreativeModeTabContentsEvent;
+import net.neoforged.neoforge.event.entity.living.BabyEntitySpawnEvent;
 import net.neoforged.neoforge.event.server.ServerStartingEvent;
+import net.neoforged.neoforge.event.tick.EntityTickEvent;
 import net.neoforged.neoforge.event.tick.PlayerTickEvent;
 import net.neoforged.neoforge.registries.DeferredBlock;
 import net.neoforged.neoforge.registries.DeferredHolder;
@@ -85,6 +102,9 @@ public class JunkCraft {
                             .saturationModifier(0.1f)
                             .build())));
 
+    // Kaka - dropped when a player sneaks; also works as a super bonemeal that grows plants almost instantly
+    public static final DeferredItem<Item> KAKA = ITEMS.register("kaka", () -> new KakaItem(new Item.Properties()));
+
     // Creates a creative tab with the id "junkcraft:example_tab" for the example item, that is placed after the combat tab
     public static final DeferredHolder<CreativeModeTab, CreativeModeTab> EXAMPLE_TAB = CREATIVE_MODE_TABS.register("example_tab", () -> CreativeModeTab.builder()
             .title(Component.translatable("itemGroup.junkcraft")) //The language key for the title of your CreativeModeTab
@@ -95,6 +115,7 @@ public class JunkCraft {
                 output.accept(MAGIC_NUKKEL_FLASCHE.get());
                 output.accept(COAL_GENERATOR_UPGRADE.get());
                 output.accept(COAL_GENERATOR_ITEM.get());
+                output.accept(KAKA.get());
             }).build());
 
     // The constructor for the mod class is the first code that is run when your mod is loaded.
@@ -113,6 +134,8 @@ public class JunkCraft {
         ModBlockEntities.BLOCK_ENTITY_TYPES.register(modEventBus);
         // Register the Deferred Register to the mod event bus so menu types get registered
         ModMenuTypes.MENU_TYPES.register(modEventBus);
+        // Register the Deferred Register to the mod event bus so sound events get registered
+        ModSounds.SOUND_EVENTS.register(modEventBus);
         // Register energy/fluid capabilities for the Coal Generator
         modEventBus.addListener(this::registerCapabilities);
 
@@ -157,7 +180,53 @@ public class JunkCraft {
         }
     }
 
-    // Handle flight removal after the duration expires
+    // Play a romance sound when two animals actually breed (not just when one is fed into love mode)
+    @SubscribeEvent
+    public void onBabyEntitySpawn(BabyEntitySpawnEvent event) {
+        Mob parentA = event.getParentA();
+        if (parentA.level().isClientSide) return;
+
+        BlockPos pos = parentA.blockPosition();
+        parentA.level().playSound(null, pos, ModSounds.ROMANCE.get(), SoundSource.NEUTRAL, 1.0F, 1.0F);
+    }
+
+    // Villagers don't fire BabyEntitySpawnEvent, so track their courting brain memory directly:
+    // play the romance sound as soon as a pair starts courting (which is also when heart particles begin),
+    // and play a fail sound if the courting ends without a new baby villager showing up (e.g. no free bed).
+    private static final Map<UUID, Set<UUID>> VILLAGER_COURTING_SNAPSHOT = new HashMap<>();
+
+    @SubscribeEvent
+    public void onVillagerTick(EntityTickEvent.Post event) {
+        if (!(event.getEntity() instanceof Villager villager)) return;
+        if (villager.level().isClientSide) return;
+
+        boolean courting = villager.getBrain().hasMemoryValue(MemoryModuleType.BREED_TARGET);
+        boolean wasCourting = villager.getPersistentData().getBoolean("junkcraft.villager_courting");
+
+        if (courting && !wasCourting) {
+            villager.level().playSound(null, villager.blockPosition(), ModSounds.ROMANCE.get(), SoundSource.NEUTRAL, 1.0F, 1.0F);
+            VILLAGER_COURTING_SNAPSHOT.put(villager.getUUID(), nearbyBabyVillagerIds(villager));
+        } else if (!courting && wasCourting) {
+            Set<UUID> before = VILLAGER_COURTING_SNAPSHOT.remove(villager.getUUID());
+            Set<UUID> after = nearbyBabyVillagerIds(villager);
+            boolean gotNewBaby = before != null && after.stream().anyMatch(id -> !before.contains(id));
+            if (!gotNewBaby) {
+                villager.level().playSound(null, villager.blockPosition(), ModSounds.VILLAGER_BREED_FAIL.get(), SoundSource.NEUTRAL, 1.0F, 1.0F);
+            }
+        }
+
+        villager.getPersistentData().putBoolean("junkcraft.villager_courting", courting);
+    }
+
+    private static Set<UUID> nearbyBabyVillagerIds(Villager villager) {
+        return villager.level()
+                .getEntitiesOfClass(Villager.class, villager.getBoundingBox().inflate(4.0), Villager::isBaby)
+                .stream()
+                .map(Entity::getUUID)
+                .collect(Collectors.toSet());
+    }
+
+    // Handle flight removal after the duration expires, and drop a Kaka with a fart sound whenever a player starts sneaking
     @SubscribeEvent
     public void onPlayerTick(PlayerTickEvent.Post event) {
         var player = event.getEntity();
@@ -171,6 +240,14 @@ public class JunkCraft {
             }
             player.getPersistentData().remove("junkcraft.flight_end");
         }
+
+        boolean isSneaking = player.isShiftKeyDown();
+        boolean wasSneaking = player.getPersistentData().getBoolean("junkcraft.was_sneaking");
+        if (isSneaking && !wasSneaking) {
+            player.spawnAtLocation(new ItemStack(KAKA.get()));
+            player.level().playSound(null, player.blockPosition(), ModSounds.PERFECT_FART.get(), SoundSource.PLAYERS, 1.0F, 1.0F);
+        }
+        player.getPersistentData().putBoolean("junkcraft.was_sneaking", isSneaking);
     }
 
     // You can use SubscribeEvent and let the Event Bus discover methods to call
