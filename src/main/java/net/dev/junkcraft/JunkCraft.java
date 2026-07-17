@@ -7,6 +7,7 @@ import com.mojang.logging.LogUtils;
 import net.dev.junkcraft.block.CoalGeneratorBlock;
 import net.dev.junkcraft.block.entity.ModBlockEntities;
 import net.dev.junkcraft.item.CoalGeneratorUpgradeItem;
+import net.dev.junkcraft.item.MagicNukkelFlascheItem;
 import net.dev.junkcraft.menu.ModMenuTypes;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.core.registries.Registries;
@@ -32,6 +33,7 @@ import net.neoforged.neoforge.capabilities.RegisterCapabilitiesEvent;
 import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.event.BuildCreativeModeTabContentsEvent;
 import net.neoforged.neoforge.event.server.ServerStartingEvent;
+import net.neoforged.neoforge.event.tick.PlayerTickEvent;
 import net.neoforged.neoforge.registries.DeferredBlock;
 import net.neoforged.neoforge.registries.DeferredHolder;
 import net.neoforged.neoforge.registries.DeferredItem;
@@ -74,6 +76,15 @@ public class JunkCraft {
     public static final DeferredItem<Item> COAL_GENERATOR_UPGRADE = ITEMS.register("coal_generator_upgrade",
             () -> new CoalGeneratorUpgradeItem(new Item.Properties()));
 
+    // Magic Nukkel Flasche - gives nausea and flight when consumed
+    public static final DeferredItem<Item> MAGIC_NUKKEL_FLASCHE = ITEMS.register("magic_nukkel_flasche",
+            () -> new MagicNukkelFlascheItem(new Item.Properties()
+                    .food(new FoodProperties.Builder()
+                            .alwaysEdible()
+                            .nutrition(2)
+                            .saturationModifier(0.1f)
+                            .build())));
+
     // Creates a creative tab with the id "junkcraft:example_tab" for the example item, that is placed after the combat tab
     public static final DeferredHolder<CreativeModeTab, CreativeModeTab> EXAMPLE_TAB = CREATIVE_MODE_TABS.register("example_tab", () -> CreativeModeTab.builder()
             .title(Component.translatable("itemGroup.junkcraft")) //The language key for the title of your CreativeModeTab
@@ -81,6 +92,7 @@ public class JunkCraft {
             .icon(() -> EXAMPLE_ITEM.get().getDefaultInstance())
             .displayItems((parameters, output) -> {
                 output.accept(EXAMPLE_ITEM.get()); // Add the example item to the tab. For your own tabs, this method is preferred over the event
+                output.accept(MAGIC_NUKKEL_FLASCHE.get());
                 output.accept(COAL_GENERATOR_UPGRADE.get());
                 output.accept(COAL_GENERATOR_ITEM.get());
             }).build());
@@ -142,6 +154,22 @@ public class JunkCraft {
     private void addCreative(BuildCreativeModeTabContentsEvent event) {
         if (event.getTabKey() == CreativeModeTabs.BUILDING_BLOCKS) {
             event.accept(EXAMPLE_BLOCK_ITEM);
+        }
+    }
+
+    // Handle flight removal after the duration expires
+    @SubscribeEvent
+    public void onPlayerTick(PlayerTickEvent.Post event) {
+        var player = event.getEntity();
+        if (player.level().isClientSide) return;
+        long flightEnd = player.getPersistentData().getLong("junkcraft.flight_end");
+        if (flightEnd > 0 && player.level().getGameTime() >= flightEnd) {
+            if (player.getAbilities().mayfly && !player.getAbilities().instabuild) {
+                player.getAbilities().mayfly = false;
+                player.getAbilities().flying = false;
+                player.onUpdateAbilities();
+            }
+            player.getPersistentData().remove("junkcraft.flight_end");
         }
     }
 
