@@ -53,6 +53,7 @@ public class CoalGeneratorBlockEntity extends BlockEntity implements MenuProvide
 
     private int litTime;
     private int litDuration;
+    private int lastGeneratedRF;
 
     private final ContainerData data = new ContainerData() {
         @Override
@@ -62,6 +63,7 @@ public class CoalGeneratorBlockEntity extends BlockEntity implements MenuProvide
                 case 1 -> energyStorage.getMaxEnergyStored();
                 case 2 -> litTime;
                 case 3 -> litDuration;
+                case 4 -> lastGeneratedRF;
                 default -> 0;
             };
         }
@@ -72,13 +74,14 @@ public class CoalGeneratorBlockEntity extends BlockEntity implements MenuProvide
                 case 0 -> energyStorage.setEnergy(value);
                 case 2 -> litTime = value;
                 case 3 -> litDuration = value;
+                case 4 -> lastGeneratedRF = value;
                 default -> {}
             }
         }
 
         @Override
         public int getCount() {
-            return 4;
+            return 5;
         }
     };
 
@@ -108,10 +111,12 @@ public class CoalGeneratorBlockEntity extends BlockEntity implements MenuProvide
         boolean wasLit = state.getValue(CoalGeneratorBlock.LIT);
         boolean isActive = false;
         boolean dirty = false;
+        int generated = 0;
 
         if (be.litTime > 0) {
             be.litTime--;
             be.energyStorage.addEnergy(RF_PER_TICK);
+            generated += RF_PER_TICK;
             isActive = true;
             dirty = true;
         } else {
@@ -123,6 +128,7 @@ public class CoalGeneratorBlockEntity extends BlockEntity implements MenuProvide
                 be.litDuration = burnTime;
                 be.litTime = burnTime - 1;
                 be.energyStorage.addEnergy(RF_PER_TICK);
+                generated += RF_PER_TICK;
                 isActive = true;
                 dirty = true;
             }
@@ -132,10 +138,12 @@ public class CoalGeneratorBlockEntity extends BlockEntity implements MenuProvide
         if (!be.fluidTank.isEmpty() && room >= RF_PER_TICK) {
             be.fluidTank.drain(LAVA_MB_PER_TICK, IFluidHandler.FluidAction.EXECUTE);
             be.energyStorage.addEnergy(RF_PER_TICK);
+            generated += RF_PER_TICK;
             isActive = true;
             dirty = true;
         }
 
+        be.lastGeneratedRF = generated;
         be.distributeEnergy(level, pos);
 
         if (isActive != wasLit) {
