@@ -17,6 +17,7 @@ import net.dev.junkcraft.block.CoalGeneratorBlock;
 import net.dev.junkcraft.block.PressBlock;
 import net.dev.junkcraft.block.entity.ModBlockEntities;
 import net.dev.junkcraft.item.CarrotCigarItem;
+import net.dev.junkcraft.item.CigaretteItem;
 import net.dev.junkcraft.item.CoalGeneratorUpgradeItem;
 import net.dev.junkcraft.item.FunPipeItem;
 import net.dev.junkcraft.item.KakaItem;
@@ -169,6 +170,15 @@ public class JunkCraft {
     public static final DeferredItem<Item> CARROT_CIGAR = ITEMS.register("carrot_cigar",
             () -> new CarrotCigarItem(new Item.Properties().stacksTo(1)));
 
+    // Cigarette - hold it like a flute, take puffs, smoke particles, random positive effects
+    public static final DeferredItem<Item> CIGAR = ITEMS.register("cigar",
+            () -> new CigaretteItem(new Item.Properties().stacksTo(1)
+                    .food(new net.minecraft.world.food.FoodProperties.Builder()
+                            .alwaysEdible()
+                            .nutrition(0)
+                            .saturationModifier(0f)
+                            .build())));
+
     // Guide to Mood - a written book explaining the Mood stat, handed out on first join
     public static final DeferredItem<Item> GUIDE_BOOK = ITEMS.register("guide_book",
             () -> new GuideBookItem(GuideBookItem.defaultProperties()));
@@ -189,6 +199,7 @@ public class JunkCraft {
                 output.accept(THING.get());
                 output.accept(PRESS_ITEM.get());
                 output.accept(CARROT_CIGAR.get());
+                output.accept(CIGAR.get());
                 output.accept(GUIDE_BOOK.get());
             }).build());
 
