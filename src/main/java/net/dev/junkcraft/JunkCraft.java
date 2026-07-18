@@ -11,33 +11,49 @@ import org.slf4j.Logger;
 import com.mojang.logging.LogUtils;
 
 import net.dev.junkcraft.block.CoalGeneratorBlock;
+import net.dev.junkcraft.block.PressBlock;
 import net.dev.junkcraft.block.entity.ModBlockEntities;
+import net.dev.junkcraft.item.CarrotCigarItem;
 import net.dev.junkcraft.item.CoalGeneratorUpgradeItem;
 import net.dev.junkcraft.item.FunPipeItem;
 import net.dev.junkcraft.item.KakaItem;
 import net.dev.junkcraft.item.MagicNukkelFlascheItem;
+import net.dev.junkcraft.item.GuideBookItem;
+import net.dev.junkcraft.item.ModDataComponents;
 import net.dev.junkcraft.menu.ModMenuTypes;
+import net.dev.junkcraft.mood.Mood;
+import net.dev.junkcraft.network.ModNetworking;
 import net.dev.junkcraft.sound.ModSounds;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.network.chat.Component;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.sounds.SoundSource;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.ai.memory.MemoryModuleType;
+import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.entity.npc.Villager;
+import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.food.FoodProperties;
+import net.minecraft.world.effect.MobEffectInstance;
+import net.minecraft.world.effect.MobEffects;
 import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.CreativeModeTab;
 import net.minecraft.world.item.CreativeModeTabs;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.SoundType;
 import net.minecraft.world.level.block.state.BlockBehaviour;
 import net.minecraft.world.level.material.MapColor;
+import net.minecraft.world.phys.AABB;
+import net.minecraft.world.phys.Vec3;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.Mod;
@@ -49,6 +65,9 @@ import net.neoforged.neoforge.capabilities.RegisterCapabilitiesEvent;
 import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.event.BuildCreativeModeTabContentsEvent;
 import net.neoforged.neoforge.event.entity.living.BabyEntitySpawnEvent;
+import net.neoforged.neoforge.event.entity.living.LivingDamageEvent;
+import net.neoforged.neoforge.event.entity.player.PlayerEvent;
+import net.neoforged.neoforge.event.level.PistonEvent;
 import net.neoforged.neoforge.event.server.ServerStartingEvent;
 import net.neoforged.neoforge.event.tick.EntityTickEvent;
 import net.neoforged.neoforge.event.tick.PlayerTickEvent;
@@ -112,8 +131,38 @@ public class JunkCraft {
                             .saturationModifier(0.1f)
                             .build())));
 
-    // Kaka - dropped when a player sneaks; also works as a super bonemeal that grows plants almost instantly
-    public static final DeferredItem<Item> KAKA = ITEMS.register("kaka", () -> new KakaItem(new Item.Properties()));
+    // Kaka - dropped when a player sneaks; also works as a super bonemeal that grows plants almost instantly.
+    // Also, regrettably, edible - gives Nausea and 5 seconds of very public vomiting
+    public static final DeferredItem<Item> KAKA = ITEMS.register("kaka",
+            () -> new KakaItem(new Item.Properties().food(new FoodProperties.Builder()
+                    .alwaysEdible()
+                    .nutrition(1)
+                    .saturationModifier(0f)
+                    .build())));
+
+    // Magic Crystal - crush it under a piston (or feed it into a Press) to get a Thing
+    public static final DeferredItem<Item> MAGIC_CRYSTAL = ITEMS.registerSimpleItem("magic_crystal", new Item.Properties());
+
+    // Thing - made by crushing a Magic Crystal; feed it plus bamboo into a Press to get a Fun Pipe
+    public static final DeferredItem<Item> THING = ITEMS.registerSimpleItem("thing", new Item.Properties());
+
+    // The Press: an RF-powered machine that crushes Magic Crystal into Thing, and presses Thing + Bamboo into a Fun Pipe
+    public static final DeferredBlock<PressBlock> PRESS = BLOCKS.register("press",
+            () -> new PressBlock(BlockBehaviour.Properties.of()
+                    .mapColor(MapColor.COLOR_PURPLE)
+                    .strength(3.5F)
+                    .requiresCorrectToolForDrops()
+                    .sound(SoundType.METAL)));
+    public static final DeferredItem<BlockItem> PRESS_ITEM = ITEMS.registerSimpleBlockItem("press", PRESS);
+
+    // Carrot Cigar - press a Thing with a Carrot, then light it (sneak + right-click with Flint and Steel
+    // in your offhand) and suck on it (right-click) up to 5 times before it's used up
+    public static final DeferredItem<Item> CARROT_CIGAR = ITEMS.register("carrot_cigar",
+            () -> new CarrotCigarItem(new Item.Properties().stacksTo(1)));
+
+    // Guide to Mood - a written book explaining the Mood stat, handed out on first join
+    public static final DeferredItem<Item> GUIDE_BOOK = ITEMS.register("guide_book",
+            () -> new GuideBookItem(GuideBookItem.defaultProperties()));
 
     // Creates a creative tab with the id "junkcraft:example_tab" for the example item, that is placed after the combat tab
     public static final DeferredHolder<CreativeModeTab, CreativeModeTab> EXAMPLE_TAB = CREATIVE_MODE_TABS.register("example_tab", () -> CreativeModeTab.builder()
@@ -127,6 +176,11 @@ public class JunkCraft {
                 output.accept(COAL_GENERATOR_UPGRADE.get());
                 output.accept(COAL_GENERATOR_ITEM.get());
                 output.accept(KAKA.get());
+                output.accept(MAGIC_CRYSTAL.get());
+                output.accept(THING.get());
+                output.accept(PRESS_ITEM.get());
+                output.accept(CARROT_CIGAR.get());
+                output.accept(GUIDE_BOOK.get());
             }).build());
 
     // The constructor for the mod class is the first code that is run when your mod is loaded.
@@ -147,8 +201,12 @@ public class JunkCraft {
         ModMenuTypes.MENU_TYPES.register(modEventBus);
         // Register the Deferred Register to the mod event bus so sound events get registered
         ModSounds.SOUND_EVENTS.register(modEventBus);
+        // Register the Deferred Register to the mod event bus so data component types get registered
+        ModDataComponents.DATA_COMPONENTS.register(modEventBus);
         // Register energy/fluid capabilities for the Coal Generator
         modEventBus.addListener(this::registerCapabilities);
+        // Register the Mood sync network payload
+        modEventBus.addListener(ModNetworking::register);
 
         // Register ourselves for server and other game events we are interested in.
         // Note that this is necessary if and only if we want *this* class (JunkCraft) to respond directly to events.
@@ -182,6 +240,11 @@ public class JunkCraft {
                 (blockEntity, side) -> blockEntity.getFluidTank());
         event.registerBlockEntity(Capabilities.ItemHandler.BLOCK, ModBlockEntities.COAL_GENERATOR.get(),
                 (blockEntity, side) -> blockEntity.getFuelItems());
+
+        event.registerBlockEntity(Capabilities.EnergyStorage.BLOCK, ModBlockEntities.PRESS.get(),
+                (blockEntity, side) -> blockEntity.getEnergyStorage());
+        event.registerBlockEntity(Capabilities.ItemHandler.BLOCK, ModBlockEntities.PRESS.get(),
+                (blockEntity, side) -> blockEntity.getCombinedItemHandler());
     }
 
     // Add the example block item to the building blocks tab
@@ -191,7 +254,22 @@ public class JunkCraft {
         }
     }
 
-    // Play a romance sound when two animals actually breed (not just when one is fed into love mode)
+    // Crush a Magic Crystal item into a Thing when a piston pushes a block onto it
+    @SubscribeEvent
+    public void onPistonMoved(PistonEvent.Post event) {
+        if (!event.getPistonMoveType().isExtend) return;
+        if (!(event.getLevel() instanceof ServerLevel level)) return;
+
+        BlockPos crushPos = event.getFaceOffsetPos();
+        AABB crushBox = new AABB(crushPos);
+        for (ItemEntity itemEntity : level.getEntitiesOfClass(ItemEntity.class, crushBox, e -> e.getItem().is(MAGIC_CRYSTAL.get()))) {
+            ItemStack crystalStack = itemEntity.getItem();
+            itemEntity.setItem(new ItemStack(THING.get(), crystalStack.getCount()));
+        }
+    }
+
+    // Play a romance sound when two animals actually breed (not just when one is fed into love mode),
+    // and cheer up any nearby players who get to watch
     @SubscribeEvent
     public void onBabyEntitySpawn(BabyEntitySpawnEvent event) {
         Mob parentA = event.getParentA();
@@ -199,6 +277,7 @@ public class JunkCraft {
 
         BlockPos pos = parentA.blockPosition();
         parentA.level().playSound(null, pos, ModSounds.ROMANCE.get(), SoundSource.NEUTRAL, 1.0F, 1.0F);
+        changeMoodNearby(parentA.level(), pos, ROMANCE_MOOD_RADIUS, ROMANCE_MOOD_BONUS);
     }
 
     // Villagers don't fire BabyEntitySpawnEvent, so track their courting brain memory directly:
@@ -216,6 +295,7 @@ public class JunkCraft {
 
         if (courting && !wasCourting) {
             villager.level().playSound(null, villager.blockPosition(), ModSounds.ROMANCE.get(), SoundSource.NEUTRAL, 1.0F, 1.0F);
+            changeMoodNearby(villager.level(), villager.blockPosition(), ROMANCE_MOOD_RADIUS, ROMANCE_MOOD_BONUS);
             VILLAGER_COURTING_SNAPSHOT.put(villager.getUUID(), nearbyBabyVillagerIds(villager));
         } else if (!courting && wasCourting) {
             Set<UUID> before = VILLAGER_COURTING_SNAPSHOT.remove(villager.getUUID());
@@ -223,6 +303,7 @@ public class JunkCraft {
             boolean gotNewBaby = before != null && after.stream().anyMatch(id -> !before.contains(id));
             if (!gotNewBaby) {
                 villager.level().playSound(null, villager.blockPosition(), ModSounds.VILLAGER_BREED_FAIL.get(), SoundSource.NEUTRAL, 1.0F, 1.0F);
+                changeMoodNearby(villager.level(), villager.blockPosition(), ROMANCE_MOOD_RADIUS, VILLAGER_FAIL_MOOD_PENALTY);
             }
         }
 
@@ -235,6 +316,72 @@ public class JunkCraft {
                 .stream()
                 .map(Entity::getUUID)
                 .collect(Collectors.toSet());
+    }
+
+    private static final double ROMANCE_MOOD_RADIUS = 16.0;
+    private static final int ROMANCE_MOOD_BONUS = 5;
+    private static final int VILLAGER_FAIL_MOOD_PENALTY = -5;
+
+    private static void changeMoodNearby(net.minecraft.world.level.Level level, BlockPos pos, double radius, int delta) {
+        if (!(level instanceof ServerLevel serverLevel)) return;
+        AABB box = AABB.ofSize(pos.getCenter(), radius * 2, radius * 2, radius * 2);
+        for (Player player : serverLevel.getEntitiesOfClass(Player.class, box)) {
+            Mood.add(player, delta);
+        }
+    }
+
+    // Carrying a Kaka around makes every mob within 30 blocks flee from the smell and, if
+    // bare-headed, throw on a mask (a carved pumpkin) to try and escape it
+    private static final double SMELL_RADIUS = 30.0;
+    private static final int SMELL_TICK_INTERVAL = 20;
+    private static final double FLEE_DISTANCE = 12.0;
+    private static final double FLEE_SPEED = 1.3;
+
+    @SubscribeEvent
+    public void onMobTick(EntityTickEvent.Post event) {
+        if (!(event.getEntity() instanceof Mob mob)) return;
+        if (mob.level().isClientSide) return;
+        if (mob.tickCount % SMELL_TICK_INTERVAL != 0) return;
+
+        Player smelly = findNearestKakaHolder(mob);
+        boolean wearingMask = mob.getPersistentData().getBoolean("junkcraft.smell_mask");
+
+        if (smelly != null) {
+            if (!wearingMask && mob.getItemBySlot(EquipmentSlot.HEAD).isEmpty()) {
+                mob.setItemSlot(EquipmentSlot.HEAD, new ItemStack(Items.CARVED_PUMPKIN));
+                mob.getPersistentData().putBoolean("junkcraft.smell_mask", true);
+            }
+
+            Vec3 away = mob.position().subtract(smelly.position());
+            if (away.lengthSqr() < 1.0E-4) {
+                away = new Vec3(mob.getRandom().nextDouble() - 0.5, 0.0, mob.getRandom().nextDouble() - 0.5);
+            }
+            Vec3 fleeTarget = mob.position().add(away.normalize().scale(FLEE_DISTANCE));
+            mob.getNavigation().moveTo(fleeTarget.x, fleeTarget.y, fleeTarget.z, FLEE_SPEED);
+        } else if (wearingMask) {
+            mob.setItemSlot(EquipmentSlot.HEAD, ItemStack.EMPTY);
+            mob.getPersistentData().remove("junkcraft.smell_mask");
+        }
+    }
+
+    private static Player findNearestKakaHolder(Mob mob) {
+        AABB box = mob.getBoundingBox().inflate(SMELL_RADIUS);
+        for (Player player : mob.level().getEntitiesOfClass(Player.class, box)) {
+            if (hasKaka(player)) {
+                return player;
+            }
+        }
+        return null;
+    }
+
+    private static boolean hasKaka(Player player) {
+        for (ItemStack stack : player.getInventory().items) {
+            if (stack.is(KAKA.get())) return true;
+        }
+        for (ItemStack stack : player.getInventory().offhand) {
+            if (stack.is(KAKA.get())) return true;
+        }
+        return false;
     }
 
     // Handle flight removal after the duration expires, and drop a Kaka with a fart sound whenever a player starts sneaking
@@ -250,6 +397,7 @@ public class JunkCraft {
                 player.onUpdateAbilities();
             }
             player.getPersistentData().remove("junkcraft.flight_end");
+            Mood.add(player, MAGIC_NUKKEL_COMEDOWN_MOOD);
         }
 
         boolean isSneaking = player.isShiftKeyDown();
@@ -257,8 +405,114 @@ public class JunkCraft {
         if (isSneaking && !wasSneaking) {
             player.spawnAtLocation(new ItemStack(KAKA.get()));
             player.level().playSound(null, player.blockPosition(), ModSounds.PERFECT_FART.get(), SoundSource.PLAYERS, 1.0F, 1.0F);
+            Mood.add(player, KAKA_SNEEZE_MOOD_PENALTY);
         }
         player.getPersistentData().putBoolean("junkcraft.was_sneaking", isSneaking);
+
+        tickVomiting(player);
+        tickMood(player);
+        tickSmell(player);
+    }
+
+    // Let the player know why every mob keeps running away from them
+    private static final int SMELL_REMINDER_INTERVAL_TICKS = 300; // 15 seconds
+
+    private void tickSmell(Player player) {
+        boolean isSmelly = hasKaka(player);
+        boolean wasSmelly = player.getPersistentData().getBoolean("junkcraft.was_smelly");
+
+        if (isSmelly && !wasSmelly) {
+            player.displayClientMessage(Component.literal(
+                    "§2You reek of Kaka! Mobs within 30 blocks will flee from you and cover their faces."), false);
+        } else if (!isSmelly && wasSmelly) {
+            player.displayClientMessage(Component.literal("§aThe smell has faded. Mobs no longer flee from you."), false);
+        } else if (isSmelly && player.level().getGameTime() % SMELL_REMINDER_INTERVAL_TICKS == 0) {
+            player.displayClientMessage(Component.literal("§2You still reek of Kaka..."), true);
+        }
+
+        player.getPersistentData().putBoolean("junkcraft.was_smelly", isSmelly);
+    }
+
+    // While a player is digesting a Kaka, periodically burst vomit particles and a retch sound
+    // that every nearby player can see and hear, not just the one throwing up
+    private static final int VOMIT_BURST_INTERVAL_TICKS = 15;
+
+    private void tickVomiting(Player player) {
+        long vomitEnd = player.getPersistentData().getLong("junkcraft.vomit_end");
+        if (vomitEnd <= 0) return;
+
+        long gameTime = player.level().getGameTime();
+        if (gameTime >= vomitEnd) {
+            player.getPersistentData().remove("junkcraft.vomit_end");
+            return;
+        }
+
+        if (gameTime % VOMIT_BURST_INTERVAL_TICKS == 0 && player.level() instanceof ServerLevel serverLevel) {
+            double x = player.getX();
+            double y = player.getY() + player.getEyeHeight() - 0.2;
+            double z = player.getZ();
+            serverLevel.sendParticles(ParticleTypes.SNEEZE, x, y, z, 12, 0.2, 0.05, 0.2, 0.05);
+            serverLevel.sendParticles(ParticleTypes.ITEM_SLIME, x, y, z, 8, 0.2, 0.05, 0.2, 0.1);
+            serverLevel.playSound(null, player.blockPosition(), ModSounds.VOMIT.get(), SoundSource.PLAYERS, 1.0F, 1.0F);
+        }
+    }
+
+    // Mood constants: how the various Junk Craft shenanigans move the Mood stat
+    public static final int KAKA_SNEEZE_MOOD_PENALTY = -1;
+    public static final int MAGIC_NUKKEL_COMEDOWN_MOOD = -15;
+    private static final int MOOD_DRIFT_INTERVAL_TICKS = 600; // 30 seconds
+    private static final int BOREDOM_FLOOR = 45;
+    private static final int RECOVERY_CEILING = 40;
+    private static final int MOOD_EFFECT_CHECK_INTERVAL_TICKS = 100;
+    private static final int MOOD_EFFECT_DURATION_TICKS = 200;
+
+    // Boredom slowly drags a high Mood back down to 45 (never lower), and a low Mood slowly
+    // recovers back up to 40 (never higher) - both one point every 30 seconds - then apply
+    // the low/high Mood consequences
+    private void tickMood(Player player) {
+        long gameTime = player.level().getGameTime();
+
+        if (gameTime % MOOD_DRIFT_INTERVAL_TICKS == 0) {
+            int mood = Mood.get(player);
+            if (mood > BOREDOM_FLOOR) {
+                Mood.set(player, Math.max(BOREDOM_FLOOR, mood - 1));
+            } else if (mood < RECOVERY_CEILING) {
+                Mood.set(player, Math.min(RECOVERY_CEILING, mood + 1));
+            }
+        }
+
+        if (gameTime % MOOD_EFFECT_CHECK_INTERVAL_TICKS == 0) {
+            int mood = Mood.get(player);
+            if (mood <= Mood.LOW_THRESHOLD) {
+                player.addEffect(new MobEffectInstance(MobEffects.WEAKNESS, MOOD_EFFECT_DURATION_TICKS, 0, true, false, true));
+                player.addEffect(new MobEffectInstance(MobEffects.DIG_SLOWDOWN, MOOD_EFFECT_DURATION_TICKS, 0, true, false, true));
+            } else if (mood >= Mood.HIGH_THRESHOLD) {
+                player.addEffect(new MobEffectInstance(MobEffects.REGENERATION, MOOD_EFFECT_DURATION_TICKS, 0, true, false, true));
+                player.addEffect(new MobEffectInstance(MobEffects.DIG_SPEED, MOOD_EFFECT_DURATION_TICKS, 0, true, false, true));
+            }
+        }
+    }
+
+    // Give every player the Guide to Mood once, the first time they join, and sync their current Mood to the HUD
+    @SubscribeEvent
+    public void onPlayerLoggedIn(PlayerEvent.PlayerLoggedInEvent event) {
+        var player = event.getEntity();
+        if (player.level().isClientSide) return;
+
+        Mood.set(player, Mood.get(player));
+
+        if (!player.getPersistentData().getBoolean("junkcraft.received_guide")) {
+            player.getPersistentData().putBoolean("junkcraft.received_guide", true);
+            player.addItem(new ItemStack(GUIDE_BOOK.get()));
+        }
+    }
+
+    // Getting hurt puts a damper on your Mood
+    @SubscribeEvent
+    public void onPlayerDamaged(LivingDamageEvent.Post event) {
+        if (event.getEntity() instanceof Player player && !player.level().isClientSide && event.getNewDamage() > 0) {
+            Mood.add(player, -1);
+        }
     }
 
     // You can use SubscribeEvent and let the Event Bus discover methods to call

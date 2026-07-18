@@ -14,4 +14,8 @@ public class ModMenuTypes {
     public static final DeferredHolder<MenuType<?>, MenuType<CoalGeneratorMenu>> COAL_GENERATOR =
             MENU_TYPES.register("coal_generator", () -> IMenuTypeExtension.create(
                     (windowId, inv, data) -> new CoalGeneratorMenu(windowId, inv, data.readBlockPos())));
+
+    public static final DeferredHolder<MenuType<?>, MenuType<PressMenu>> PRESS =
+            MENU_TYPES.register("press", () -> IMenuTypeExtension.create(
+                    (windowId, inv, data) -> new PressMenu(windowId, inv, data.readBlockPos())));
 }

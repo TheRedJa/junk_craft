@@ -1,5 +1,6 @@
 package net.dev.junkcraft.item;
 
+import net.dev.junkcraft.mood.Mood;
 import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.world.effect.MobEffectInstance;
 import net.minecraft.world.effect.MobEffects;
@@ -23,6 +24,7 @@ public class FunPipeItem extends Item {
             player.addEffect(new MobEffectInstance(MobEffects.MOVEMENT_SLOWDOWN, 400, 0, false, true));
             player.addEffect(new MobEffectInstance(MobEffects.WEAKNESS, 400, 0, false, true));
             player.addEffect(new MobEffectInstance(MobEffects.DIG_SLOWDOWN, 400, 0, false, true));
+            Mood.add(player, 15);
         }
         return super.finishUsingItem(stack, level, livingEntity);
     }

@@ -25,5 +25,11 @@
         "stream": true
       }
     ]
+  },
+  "vomit": {
+    "category": "player",
+    "sounds": [
+      "junkcraft:vomit"
+    ]
   }
 }
