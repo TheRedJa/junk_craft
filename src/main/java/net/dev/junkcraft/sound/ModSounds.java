@@ -21,4 +21,7 @@ public class ModSounds {
 
     public static final DeferredHolder<SoundEvent, SoundEvent> INTRO = SOUND_EVENTS.register("intro",
             () -> SoundEvent.createVariableRangeEvent(ResourceLocation.fromNamespaceAndPath(JunkCraft.MODID, "intro")));
+
+    public static final DeferredHolder<SoundEvent, SoundEvent> VOMIT = SOUND_EVENTS.register("vomit",
+            () -> SoundEvent.createVariableRangeEvent(ResourceLocation.fromNamespaceAndPath(JunkCraft.MODID, "vomit")));
 }

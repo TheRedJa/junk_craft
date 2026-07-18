@@ -1,12 +1,17 @@
 package net.dev.junkcraft;
 
 import net.dev.junkcraft.client.screen.CoalGeneratorScreen;
+import net.dev.junkcraft.client.screen.PressScreen;
 import net.dev.junkcraft.menu.ModMenuTypes;
+import net.dev.junkcraft.mood.ClientMoodCache;
+import net.dev.junkcraft.mood.Mood;
 import net.dev.junkcraft.sound.ModSounds;
 import net.minecraft.Util;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.TitleScreen;
 import net.minecraft.client.resources.sounds.SimpleSoundInstance;
+import net.minecraft.util.Mth;
+import net.minecraft.world.entity.player.Player;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.ModContainer;
@@ -14,6 +19,7 @@ import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.fml.common.Mod;
 import net.neoforged.fml.event.lifecycle.FMLClientSetupEvent;
 import net.neoforged.neoforge.client.event.RegisterMenuScreensEvent;
+import net.neoforged.neoforge.client.event.RenderGuiEvent;
 import net.neoforged.neoforge.client.event.ScreenEvent;
 import net.neoforged.neoforge.client.gui.ConfigurationScreen;
 import net.neoforged.neoforge.client.gui.IConfigScreenFactory;
@@ -40,6 +46,7 @@ public class JunkCraftClient {
     @SubscribeEvent
     static void onRegisterMenuScreens(RegisterMenuScreensEvent event) {
         event.register(ModMenuTypes.COAL_GENERATOR.get(), CoalGeneratorScreen::new);
+        event.register(ModMenuTypes.PRESS.get(), PressScreen::new);
     }
 
     // Play the intro jingle once on the very first main menu of the session, and fade the menu in
@@ -74,21 +81,37 @@ public class JunkCraftClient {
         event.getGuiGraphics().fill(0, 0, screen.width, screen.height, color);
     }
 
-    private static boolean isIntroFading() {
-        return introStartMs >= 0 && Util.getMillis() - introStartMs < INTRO_FADE_MS;
-    }
+    // Draw the Mood bar one row above where the hunger bar sits, in the same spot regardless of
+    // gamemode (the hunger bar itself is hidden in Creative/Spectator, but Mood should still show).
+    private static final int BAR_WIDTH = 81;
+    private static final int BAR_HEIGHT = 5;
+    private static final int BAR_Y_OFFSET_ABOVE_HUNGER = 49;
 
     @SubscribeEvent
-    static void onTitleScreenMouseDown(ScreenEvent.MouseButtonPressed.Pre event) {
-        if (event.getScreen() instanceof TitleScreen && isIntroFading()) {
-            event.setCanceled(true);
+    static void onRenderGui(RenderGuiEvent.Post event) {
+        Minecraft minecraft = Minecraft.getInstance();
+        Player player = minecraft.player;
+        if (player == null || player.isSpectator() || minecraft.options.hideGui) {
+            return;
         }
-    }
 
-    @SubscribeEvent
-    static void onTitleScreenKeyDown(ScreenEvent.KeyPressed.Pre event) {
-        if (event.getScreen() instanceof TitleScreen && isIntroFading()) {
-            event.setCanceled(true);
-        }
+        var guiGraphics = event.getGuiGraphics();
+        int screenWidth = guiGraphics.guiWidth();
+        int screenHeight = guiGraphics.guiHeight();
+
+        int right = screenWidth / 2 + 91;
+        int left = right - BAR_WIDTH;
+        int top = screenHeight - BAR_Y_OFFSET_ABOVE_HUNGER;
+
+        int mood = ClientMoodCache.get();
+        float fraction = Mth.clamp(mood, Mood.MIN, Mood.MAX) / (float) Mood.MAX;
+        int filledWidth = Math.round(BAR_WIDTH * fraction);
+        int fillColor = Mth.hsvToRgb(fraction / 3.0F, 1.0F, 1.0F) | 0xFF000000;
+
+        guiGraphics.fill(left - 1, top - 1, right + 1, top + BAR_HEIGHT + 1, 0x80000000);
+        guiGraphics.fill(left, top, right, top + BAR_HEIGHT, 0xFF3A3A3A);
+        guiGraphics.fill(left, top, left + filledWidth, top + BAR_HEIGHT, fillColor);
+
+        guiGraphics.drawString(minecraft.font, "Mood " + mood, left, top - 10, 0xFFFFFF, true);
     }
 }

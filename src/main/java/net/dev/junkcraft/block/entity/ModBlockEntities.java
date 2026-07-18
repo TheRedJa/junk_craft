@@ -13,4 +13,8 @@ public class ModBlockEntities {
     public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<CoalGeneratorBlockEntity>> COAL_GENERATOR =
             BLOCK_ENTITY_TYPES.register("coal_generator", () -> BlockEntityType.Builder.of(
                     CoalGeneratorBlockEntity::new, JunkCraft.COAL_GENERATOR.get()).build(null));
+
+    public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<PressBlockEntity>> PRESS =
+            BLOCK_ENTITY_TYPES.register("press", () -> BlockEntityType.Builder.of(
+                    PressBlockEntity::new, JunkCraft.PRESS.get()).build(null));
 }

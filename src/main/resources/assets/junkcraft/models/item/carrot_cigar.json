@@ -1,0 +1,6 @@
+{
+  "parent": "minecraft:item/generated",
+  "textures": {
+    "layer0": "junkcraft:item/carrot_cigar"
+  }
+}

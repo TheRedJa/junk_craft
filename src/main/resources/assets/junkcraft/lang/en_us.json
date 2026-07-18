@@ -7,6 +7,18 @@
   "item.junkcraft.fun_pipe": "Fun Pipe",
   "item.junkcraft.magic_nukkel_flasche": "Magic Nukkel Flasche",
   "item.junkcraft.kaka": "Kaka",
+  "item.junkcraft.magic_crystal": "Magic Crystal",
+  "item.junkcraft.thing": "Thing",
+  "block.junkcraft.press": "Press",
+  "item.junkcraft.carrot_cigar": "Carrot Cigar",
+  "item.junkcraft.carrot_cigar.lit": "Lit - %s puffs left",
+  "item.junkcraft.carrot_cigar.unlit": "Unlit - sneak + right-click with Flint and Steel in your offhand",
+  "item.junkcraft.guide_book": "Guide to Mood",
+
+  "jei.junkcraft.furnace_upgrade": "Furnace Upgrade",
+  "jei.junkcraft.crushing": "Crushing",
+  "jei.junkcraft.pressing": "Pressing",
+  "jei.junkcraft.coal_generator_fuel": "Coal Generator Fuel",
 
   "junkcraft.configuration.title": "Junk Craft Configs",
   "junkcraft.configuration.section.junkcraft.common.toml": "Junk Craft Configs",

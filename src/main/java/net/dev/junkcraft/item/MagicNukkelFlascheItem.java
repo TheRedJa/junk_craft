@@ -1,5 +1,6 @@
 package net.dev.junkcraft.item;
 
+import net.dev.junkcraft.mood.Mood;
 import net.minecraft.core.Holder;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.core.particles.ParticleTypes;
@@ -76,6 +77,7 @@ public class MagicNukkelFlascheItem extends Item {
                 player.onUpdateAbilities();
             }
             player.getPersistentData().putLong("junkcraft.flight_end", level.getGameTime() + 300);
+            Mood.add(player, 20);
 
             if (puffs >= MAX_PUFFS) {
                 // Break the flask after 5 puffs

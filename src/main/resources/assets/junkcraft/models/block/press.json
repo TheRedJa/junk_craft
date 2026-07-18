@@ -1,0 +1,9 @@
+{
+  "parent": "minecraft:block/orientable_with_bottom",
+  "textures": {
+    "top": "junkcraft:block/press_top",
+    "bottom": "junkcraft:block/press_top",
+    "side": "junkcraft:block/press_side",
+    "front": "junkcraft:block/press_front"
+  }
+}
