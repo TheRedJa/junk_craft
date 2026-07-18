@@ -1,12 +1,15 @@
 package net.dev.junkcraft;
 
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
 import org.slf4j.Logger;
+import org.joml.Vector3f;
 
 import com.mojang.logging.LogUtils;
 
@@ -25,10 +28,12 @@ import net.dev.junkcraft.mood.Mood;
 import net.dev.junkcraft.network.ModNetworking;
 import net.dev.junkcraft.sound.ModSounds;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.particles.DustParticleOptions;
 import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.network.chat.Component;
+import net.minecraft.resources.ResourceKey;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.sounds.SoundSource;
 import net.minecraft.world.entity.Entity;
@@ -47,12 +52,16 @@ import net.minecraft.world.item.CreativeModeTabs;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
+import net.minecraft.world.level.ClipContext;
+import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.SoundType;
 import net.minecraft.world.level.block.state.BlockBehaviour;
 import net.minecraft.world.level.material.MapColor;
 import net.minecraft.world.phys.AABB;
+import net.minecraft.world.phys.HitResult;
+import net.minecraft.util.RandomSource;
 import net.minecraft.world.phys.Vec3;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.bus.api.SubscribeEvent;
@@ -410,6 +419,7 @@ public class JunkCraft {
         player.getPersistentData().putBoolean("junkcraft.was_sneaking", isSneaking);
 
         tickVomiting(player);
+        tickVomitPuddles(player);
         tickMood(player);
         tickSmell(player);
     }
@@ -448,13 +458,150 @@ public class JunkCraft {
         }
 
         if (gameTime % VOMIT_BURST_INTERVAL_TICKS == 0 && player.level() instanceof ServerLevel serverLevel) {
-            double x = player.getX();
-            double y = player.getY() + player.getEyeHeight() - 0.2;
-            double z = player.getZ();
-            serverLevel.sendParticles(ParticleTypes.SNEEZE, x, y, z, 12, 0.2, 0.05, 0.2, 0.05);
-            serverLevel.sendParticles(ParticleTypes.ITEM_SLIME, x, y, z, 8, 0.2, 0.05, 0.2, 0.1);
+            Vec3 look = player.getLookAngle();
+            Vec3 mouth = player.position()
+                    .add(0, player.getEyeHeight() - 0.2, 0)
+                    .add(look.scale(0.4));
+            // Aim the burst along the look direction (angled slightly down) so it reads as spewing
+            // out of the mouth instead of a random cloud around the player. sendParticles' offset
+            // args are only treated as a fixed velocity vector (not a random spread) when count == 0.
+            Vec3 spew = new Vec3(look.x, look.y - 0.4, look.z).normalize();
+            RandomSource random = player.getRandom();
+            for (int i = 0; i < 5; i++) {
+                Vec3 jittered = new Vec3(
+                        spew.x + (random.nextDouble() - 0.5) * 0.3,
+                        spew.y + (random.nextDouble() - 0.5) * 0.15,
+                        spew.z + (random.nextDouble() - 0.5) * 0.3
+                );
+                serverLevel.sendParticles(ParticleTypes.SNEEZE, mouth.x, mouth.y, mouth.z, 0,
+                        jittered.x, jittered.y, jittered.z, 0.35F);
+            }
+            for (int i = 0; i < 4; i++) {
+                Vec3 jittered = new Vec3(
+                        spew.x + (random.nextDouble() - 0.5) * 0.3,
+                        spew.y + (random.nextDouble() - 0.5) * 0.15,
+                        spew.z + (random.nextDouble() - 0.5) * 0.3
+                );
+                serverLevel.sendParticles(ParticleTypes.ITEM_SLIME, mouth.x, mouth.y, mouth.z, 0,
+                        jittered.x, jittered.y, jittered.z, 0.4F);
+            }
             serverLevel.playSound(null, player.blockPosition(), ModSounds.VOMIT.get(), SoundSource.PLAYERS, 1.0F, 1.0F);
         }
+    }
+
+    // Kicks off a bout of vomiting: nausea effect, the burst-particle timer above, and a puddle
+    // left behind on the ground that lingers and can gross out (or sicken) anyone who finds it.
+    public static void startVomiting(ServerLevel level, Player player, int durationTicks) {
+        player.addEffect(new MobEffectInstance(MobEffects.CONFUSION, durationTicks, 0, false, true));
+        player.getPersistentData().putLong("junkcraft.vomit_end", level.getGameTime() + durationTicks);
+        registerVomitPuddle(level, player.blockPosition());
+    }
+
+    // Puddles left behind by vomiting: they sit for a minute, look gross, and make anyone who
+    // can see them nauseous - staring straight at one from close range for too long is contagious.
+    private static final Map<ResourceKey<Level>, List<VomitPuddle>> VOMIT_PUDDLES = new HashMap<>();
+    private static final int VOMIT_PUDDLE_DURATION_TICKS = 1200; // 60 seconds
+    private static final int VOMIT_PUDDLE_EFFECT_INTERVAL_TICKS = 10;
+    private static final int VOMIT_PUDDLE_NAUSEA_TICKS = 40;
+    private static final double VOMIT_PUDDLE_VOMIT_RADIUS = 5.0;
+    private static final int VOMIT_PUDDLE_STARE_TICKS = 200; // 10 seconds
+
+    private static final class VomitPuddle {
+        final BlockPos pos;
+        final long expiryTime;
+        long nextEffectTick;
+
+        VomitPuddle(BlockPos pos, long expiryTime) {
+            this.pos = pos;
+            this.expiryTime = expiryTime;
+        }
+    }
+
+    private static void registerVomitPuddle(ServerLevel level, BlockPos pos) {
+        VOMIT_PUDDLES.computeIfAbsent(level.dimension(), key -> new ArrayList<>())
+                .add(new VomitPuddle(pos.immutable(), level.getGameTime() + VOMIT_PUDDLE_DURATION_TICKS));
+    }
+
+    private void tickVomitPuddles(Player player) {
+        if (!(player.level() instanceof ServerLevel serverLevel)) return;
+
+        List<VomitPuddle> puddles = VOMIT_PUDDLES.get(serverLevel.dimension());
+        if (puddles == null || puddles.isEmpty()) return;
+
+        long gameTime = serverLevel.getGameTime();
+        puddles.removeIf(puddle -> gameTime >= puddle.expiryTime);
+        if (puddles.isEmpty()) return;
+
+        Vec3 eyePos = player.getEyePosition();
+        Vec3 lookAngle = player.getLookAngle();
+        boolean seesAny = false;
+        boolean staring = false;
+
+        for (VomitPuddle puddle : puddles) {
+            Vec3 groundCenter = Vec3.atBottomCenterOf(puddle.pos).add(0, 0.1, 0);
+
+            // Throttled per-puddle so several players ticking the same puddle in one server
+            // tick don't multiply the ambient effects.
+            if (gameTime >= puddle.nextEffectTick) {
+                puddle.nextEffectTick = gameTime + VOMIT_PUDDLE_EFFECT_INTERVAL_TICKS;
+                spawnPuddleEffects(serverLevel, groundCenter);
+            }
+
+            // The puddle sits flush with the ground, so raycasting at a single point right on
+            // top of it is prone to grazing the block collider and reporting a false miss.
+            // Instead treat the whole 3x3x3 area around it as the target - a real bounding-box
+            // intersection test that can't be missed by floating-point edge cases.
+            AABB bounds = new AABB(puddle.pos).inflate(1.0);
+            Vec3 visibilityTarget = bounds.getCenter();
+
+            if (!hasLineOfSight(serverLevel, player, eyePos, visibilityTarget)) continue;
+            seesAny = true;
+
+            if (eyePos.distanceToSqr(groundCenter) <= VOMIT_PUDDLE_VOMIT_RADIUS * VOMIT_PUDDLE_VOMIT_RADIUS) {
+                Vec3 farPoint = eyePos.add(lookAngle.scale(VOMIT_PUDDLE_VOMIT_RADIUS + 3.0));
+                if (bounds.clip(eyePos, farPoint).isPresent()) {
+                    staring = true;
+                }
+            }
+        }
+
+        if (seesAny) {
+            player.addEffect(new MobEffectInstance(MobEffects.CONFUSION, VOMIT_PUDDLE_NAUSEA_TICKS, 0, false, true));
+        }
+
+        long stareTicks = player.getPersistentData().getLong("junkcraft.puddle_stare_ticks");
+        if (staring) {
+            stareTicks++;
+            if (stareTicks >= VOMIT_PUDDLE_STARE_TICKS && player.getPersistentData().getLong("junkcraft.vomit_end") <= 0) {
+                startVomiting(serverLevel, player, KakaItem.VOMIT_DURATION_TICKS);
+                stareTicks = 0;
+            }
+        } else {
+            stareTicks = 0;
+        }
+        player.getPersistentData().putLong("junkcraft.puddle_stare_ticks", stareTicks);
+    }
+
+    private static boolean hasLineOfSight(Level level, Player player, Vec3 from, Vec3 to) {
+        ClipContext context = new ClipContext(from, to, ClipContext.Block.COLLIDER, ClipContext.Fluid.NONE, player);
+        return level.clip(context).getType() == HitResult.Type.MISS;
+    }
+
+    private static void spawnPuddleEffects(ServerLevel level, Vec3 center) {
+        RandomSource random = level.getRandom();
+        for (int i = 0; i < 10; i++) {
+            double offsetX = (random.nextDouble() - 0.5) * 1.6;
+            double offsetZ = (random.nextDouble() - 0.5) * 1.6;
+            level.sendParticles(new DustParticleOptions(new Vector3f(0.25F, 0.7F, 0.15F), 1.4F),
+                    center.x + offsetX, center.y, center.z + offsetZ, 1, 0, 0, 0, 0);
+        }
+        // Stink rises in a column well above head height so it's clearly visible from a distance,
+        // instead of hugging the ground where it's easy to miss.
+        for (int i = 0; i < 4; i++) {
+            double height = 0.4 + i * 0.6;
+            level.sendParticles(ParticleTypes.SNEEZE, center.x, center.y + height, center.z, 3, 0.3, 0.1, 0.3, 0.01);
+        }
+        level.sendParticles(ParticleTypes.CLOUD, center.x, center.y + 2.4, center.z, 3, 0.3, 0.25, 0.3, 0.02);
     }
 
     // Mood constants: how the various Junk Craft shenanigans move the Mood stat

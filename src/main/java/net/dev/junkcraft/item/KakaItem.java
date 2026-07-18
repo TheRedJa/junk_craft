@@ -1,10 +1,9 @@
 package net.dev.junkcraft.item;
 
+import net.dev.junkcraft.JunkCraft;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.InteractionResult;
-import net.minecraft.world.effect.MobEffectInstance;
-import net.minecraft.world.effect.MobEffects;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.Item;
@@ -35,8 +34,7 @@ public class KakaItem extends Item {
     public ItemStack finishUsingItem(ItemStack stack, Level level, LivingEntity livingEntity) {
         ItemStack result = super.finishUsingItem(stack, level, livingEntity);
         if (!level.isClientSide && livingEntity instanceof Player player) {
-            player.addEffect(new MobEffectInstance(MobEffects.CONFUSION, VOMIT_DURATION_TICKS, 0, false, true));
-            player.getPersistentData().putLong("junkcraft.vomit_end", level.getGameTime() + VOMIT_DURATION_TICKS);
+            JunkCraft.startVomiting((ServerLevel) level, player, VOMIT_DURATION_TICKS);
         }
         return result;
     }
